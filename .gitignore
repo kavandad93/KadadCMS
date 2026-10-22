@@ -1,0 +1,8 @@
+app/config.php
+.env
+.env.*
+!/ .env.example
+/storage/*
+!/storage/.gitkeep
+*.log
+.DS_Store
