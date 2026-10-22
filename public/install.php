@@ -21,7 +21,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
    if(file_put_contents($configFile,$config,LOCK_EX)===false) throw new RuntimeException('Cannot write config');
    @chmod($configFile,0600);
    notice('نصب اولیه انجام شد؛ برای امنیت install.php را از سرور حذف کنید.');
-   go('index.php?page=login');
+   go('admin/index.php?page=login');
   } catch(Throwable $e) { $error='نصب انجام نشد. اطلاعات دیتابیس و دسترسی نوشتن پوشه app را بررسی کنید.'; }
  }
 }
