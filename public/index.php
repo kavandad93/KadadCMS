@@ -1,52 +1,39 @@
 <?php
 declare(strict_types=1);
 require __DIR__.'/../app/bootstrap.php';
-$page=(string)($_GET['page']??'dashboard');
-if (!is_file(__DIR__.'/../app/config.php') && $page!=='login') go('install.php');
 
-if ($page==='login') {
- $error='';
- if($_SERVER['REQUEST_METHOD']==='POST'){
-  check_csrf(); $username=trim((string)($_POST['username']??'')); $password=(string)($_POST['password']??'');
-  try{$s=db()->prepare('SELECT id,username,password_hash FROM users WHERE username=? LIMIT 1');$s->execute([$username]);$u=$s->fetch();
-   if($u && password_verify($password,$u['password_hash'])){session_regenerate_id(true);$_SESSION['user_id']=(int)$u['id'];$_SESSION['username']=$u['username'];go('index.php');}
-  }catch(Throwable $e){$error='ورود ممکن نیست؛ تنظیمات نصب را بررسی کن.';}
-  if($error==='')$error='نام کاربری یا رمز اشتباه است.';
- }
- $message=(string)($_SESSION['_notice']??'');unset($_SESSION['_notice']);
- ?><!doctype html><html lang="fa" dir="rtl"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>ورود · Kadad CMS</title><link rel="stylesheet" href="assets/admin.css"></head><body class="auth-page"><main class="auth-card"><div class="logo">K</div><p class="eyebrow">KADAD CMS · 0.0.1</p><h1>خوش برگشتی</h1><p class="muted">برای مدیریت سایت وارد شو.</p><?php if($message):?><div class="alert"><?=e($message)?></div><?php endif;?><?php if($error):?><div class="alert error"><?=e($error)?></div><?php endif;?><form method="post"><input type="hidden" name="_csrf" value="<?=e(csrf())?>"><label>نام کاربری<input name="username" required autocomplete="username" autofocus></label><label>رمز عبور<input type="password" name="password" required autocomplete="current-password"></label><button class="button primary full">ورود به پنل</button></form></main></body></html><?php exit;
+$posts = [];
+$products = [];
+if (is_file(__DIR__.'/../app/config.php')) {
+    try {
+        $pdo = db();
+        $posts = $pdo->query("SELECT id,title,body,updated_at FROM content_entries WHERE status='published' ORDER BY updated_at DESC")->fetchAll();
+        $products = $pdo->query('SELECT id,name,description,price,stock FROM products ORDER BY updated_at DESC')->fetchAll();
+    } catch (Throwable $e) {
+        http_response_code(503);
+    }
 }
-if($page==='logout'){if($_SERVER['REQUEST_METHOD']!=='POST'){http_response_code(405);exit('Method not allowed');}check_csrf();$_SESSION=[];session_destroy();go('index.php?page=login');}
-require_login(); $pdo=db(); $error='';
-if($_SERVER['REQUEST_METHOD']==='POST'){
- check_csrf();$action=(string)($_POST['action']??'');
- try{
-  if($action==='save-content'){
-   $id=(int)($_POST['id']??0);$title=trim((string)($_POST['title']??''));$body=trim((string)($_POST['body']??''));$status=(($_POST['status']??'draft')==='published')?'published':'draft';
-   if($title==='')throw new RuntimeException('عنوان الزامی است.');
-   if($id){$s=$pdo->prepare('UPDATE content_entries SET title=?,body=?,status=? WHERE id=?');$s->execute([$title,$body,$status,$id]);}
-   else{$s=$pdo->prepare('INSERT INTO content_entries(title,body,status) VALUES(?,?,?)');$s->execute([$title,$body,$status]);}
-   notice('محتوا ذخیره شد.');go('index.php?page=content');
-  }elseif($action==='delete-content'){$s=$pdo->prepare('DELETE FROM content_entries WHERE id=?');$s->execute([(int)($_POST['id']??0)]);notice('محتوا حذف شد.');go('index.php?page=content');
-  }elseif($action==='save-product'){
-   $id=(int)($_POST['id']??0);$name=trim((string)($_POST['name']??''));$sku=trim((string)($_POST['sku']??''));$price=(string)($_POST['price']??'0');$stock=filter_var($_POST['stock']??0,FILTER_VALIDATE_INT);$desc=trim((string)($_POST['description']??''));
-   if($name===''||!is_numeric($price)||(float)$price<0||$stock===false||$stock<0)throw new RuntimeException('نام، قیمت معتبر و موجودی صفر یا بیشتر وارد کن.');
-   if($id){$s=$pdo->prepare('UPDATE products SET name=?,sku=?,price=?,stock=?,description=? WHERE id=?');$s->execute([$name,$sku,number_format((float)$price,2,'.',''),$stock,$desc,$id]);}
-   else{$s=$pdo->prepare('INSERT INTO products(name,sku,price,stock,description) VALUES(?,?,?,?,?)');$s->execute([$name,$sku,number_format((float)$price,2,'.',''),$stock,$desc]);}
-   notice('محصول ذخیره شد.');go('index.php?page=products');
-  }elseif($action==='delete-product'){$s=$pdo->prepare('DELETE FROM products WHERE id=?');$s->execute([(int)($_POST['id']??0)]);notice('محصول حذف شد.');go('index.php?page=products');}
- }catch(Throwable $e){$error=$e instanceof RuntimeException?$e->getMessage():'عملیات انجام نشد؛ اتصال دیتابیس را بررسی کن.';}
-}
-$allowed=['dashboard','content','content-form','products','product-form'];if(!in_array($page,$allowed,true))$page='dashboard';
-$edit=null;
-if($page==='content-form'&&isset($_GET['id'])){$s=$pdo->prepare('SELECT * FROM content_entries WHERE id=?');$s->execute([(int)$_GET['id']]);$edit=$s->fetch()?:null;}
-if($page==='product-form'&&isset($_GET['id'])){$s=$pdo->prepare('SELECT * FROM products WHERE id=?');$s->execute([(int)$_GET['id']]);$edit=$s->fetch()?:null;}
-$stats=['content'=>(int)$pdo->query('SELECT COUNT(*) FROM content_entries')->fetchColumn(),'products'=>(int)$pdo->query('SELECT COUNT(*) FROM products')->fetchColumn(),'published'=>(int)$pdo->query("SELECT COUNT(*) FROM content_entries WHERE status='published'")->fetchColumn()];
-$message=(string)($_SESSION['_notice']??'');unset($_SESSION['_notice']);
-$titles=['dashboard'=>'نمای کلی','content'=>'مدیریت محتوا','content-form'=>'ویرایش محتوا','products'=>'فروشگاه و محصولات','product-form'=>'ویرایش محصول'];
-?><!doctype html><html lang="fa" dir="rtl"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title><?=e($titles[$page])?> · Kadad CMS</title><link rel="stylesheet" href="assets/admin.css"></head><body><div class="layout"><aside class="sidebar"><a class="brand" href="index.php"><span class="logo mini">K</span><span><b>Kadad CMS</b><small>مدیریت سایت</small></span></a><p class="nav-label">فضای کاری</p><a class="nav <?= $page==='dashboard'?'active':''?>" href="index.php">▦ <span>نمای کلی</span></a><a class="nav <?=strpos($page,'content')===0?'active':''?>" href="index.php?page=content">▤ <span>محتوا</span></a><a class="nav <?=strpos($page,'product')===0?'active':''?>" href="index.php?page=products">◇ <span>محصولات</span></a><div class="side-bottom"><span class="avatar"><?=e(mb_substr((string)($_SESSION['username']??'K'),0,1,'UTF-8'))?></span><span class="username"><?=e($_SESSION['username']??'مدیر')?><small>مدیر سایت</small></span><form method="post" action="index.php?page=logout"><input type="hidden" name="_csrf" value="<?=e(csrf())?>"><button class="logout" title="خروج">↪</button></form></div></aside><main class="main"><header class="topbar"><div><small class="eyebrow">KADAD WORKSPACE</small><h1><?=e($titles[$page])?></h1></div><span class="version">نسخه 0.0.1</span></header><section class="content"><?php if($message):?><div class="alert"><?=e($message)?></div><?php endif;?><?php if($error):?><div class="alert error"><?=e($error)?></div><?php endif;?>
-<?php if($page==='dashboard'):?><section class="hero"><div><small class="eyebrow">داشبورد کاداد</small><h2>سلام، <?=e($_SESSION['username']??'مدیر')?> 👋</h2><p>پایهٔ مدیریت محتوای سایتت آمادهٔ توسعه است.</p></div><span class="hero-mark">K</span></section><div class="stats"><article class="stat"><span>همهٔ محتواها</span><strong><?=$stats['content']?></strong><a href="index.php?page=content">مدیریت محتوا ←</a></article><article class="stat"><span>محصولات</span><strong><?=$stats['products']?></strong><a href="index.php?page=products">مدیریت محصولات ←</a></article><article class="stat"><span>محتوای منتشرشده</span><strong><?=$stats['published']?></strong><small>از محتوای ثبت‌شده</small></article></div><section class="panel"><h3>شروع سریع</h3><div class="quick"><a href="index.php?page=content-form"><b>＋</b><span>ساخت محتوای جدید<small>صفحه، خبر یا مقاله</small></span></a><a href="index.php?page=product-form"><b>＋</b><span>افزودن محصول<small>شروع کاتالوگ فروشگاه</small></span></a></div></section>
-<?php elseif($page==='content'): $rows=$pdo->query('SELECT id,title,status,updated_at FROM content_entries ORDER BY updated_at DESC')->fetchAll();?><section class="panel"><div class="panel-head"><div><h3>محتواها</h3><p>مدیریت نوشته‌ها و صفحات</p></div><a class="button primary" href="index.php?page=content-form">＋ محتوای جدید</a></div><?php if(!$rows):?><div class="empty"><b>هنوز محتوایی ثبت نشده</b><p>اولین صفحه یا مقاله را بساز.</p></div><?php else:?><div class="table-wrap"><table><thead><tr><th>عنوان</th><th>وضعیت</th><th>آخرین تغییر</th><th>عملیات</th></tr></thead><tbody><?php foreach($rows as $r):?><tr><td><b><?=e($r['title'])?></b></td><td><span class="pill <?=e($r['status'])?>"><?=$r['status']==='published'?'منتشرشده':'پیش‌نویس'?></span></td><td><?=e($r['updated_at'])?></td><td class="actions"><a href="index.php?page=content-form&id=<?=(int)$r['id']?>">ویرایش</a><form method="post" onsubmit="return confirm('حذف شود؟')"><input type="hidden" name="_csrf" value="<?=e(csrf())?>"><input type="hidden" name="action" value="delete-content"><input type="hidden" name="id" value="<?=(int)$r['id']?>"><button class="text-button danger">حذف</button></form></td></tr><?php endforeach;?></tbody></table></div><?php endif;?></section>
-<?php elseif($page==='content-form'):?><section class="panel form-panel"><div class="panel-head"><div><h3><?=$edit?'ویرایش محتوا':'محتوای جدید'?></h3><p>عنوان، متن و وضعیت انتشار را تنظیم کن.</p></div><a class="button secondary" href="index.php?page=content">بازگشت</a></div><form method="post" class="form"><input type="hidden" name="_csrf" value="<?=e(csrf())?>"><input type="hidden" name="action" value="save-content"><input type="hidden" name="id" value="<?=(int)($edit['id']??0)?>"><label>عنوان<input name="title" maxlength="200" required value="<?=e($edit['title']??'')?>"></label><label>متن محتوا<textarea name="body" rows="12"><?=e($edit['body']??'')?></textarea></label><label>وضعیت<select name="status"><option value="draft" <?=($edit['status']??'draft')==='draft'?'selected':''?>>پیش‌نویس</option><option value="published" <?=($edit['status']??'')==='published'?'selected':''?>>منتشرشده</option></select></label><div class="form-actions"><button class="button primary">ذخیرهٔ محتوا</button><a class="button secondary" href="index.php?page=content">لغو</a></div></form></section>
-<?php elseif($page==='products'): $rows=$pdo->query('SELECT id,name,sku,price,stock FROM products ORDER BY updated_at DESC')->fetchAll();?><section class="panel"><div class="panel-head"><div><h3>کاتالوگ محصولات</h3><p>مشخصات پایهٔ کالاها؛ پرداخت و سفارش در این نسخه وجود ندارد.</p></div><a class="button primary" href="index.php?page=product-form">＋ محصول جدید</a></div><?php if(!$rows):?><div class="empty"><b>کاتالوگ هنوز خالی است</b><p>اولین محصول را ثبت کن.</p></div><?php else:?><div class="table-wrap"><table><thead><tr><th>محصول</th><th>شناسهٔ کالا</th><th>قیمت</th><th>موجودی</th><th>عملیات</th></tr></thead><tbody><?php foreach($rows as $r):?><tr><td><b><?=e($r['name'])?></b></td><td><?=e($r['sku']?:'—')?></td><td><?=e(number_format((float)$r['price'],2))?></td><td><?=(int)$r['stock']?></td><td class="actions"><a href="index.php?page=product-form&id=<?=(int)$r['id']?>">ویرایش</a><form method="post" onsubmit="return confirm('حذف شود؟')"><input type="hidden" name="_csrf" value="<?=e(csrf())?>"><input type="hidden" name="action" value="delete-product"><input type="hidden" name="id" value="<?=(int)$r['id']?>"><button class="text-button danger">حذف</button></form></td></tr><?php endforeach;?></tbody></table></div><?php endif;?></section>
-<?php elseif($page==='product-form'):?><section class="panel form-panel"><div class="panel-head"><div><h3><?=$edit?'ویرایش محصول':'افزودن محصول'?></h3><p>اطلاعات پایهٔ محصول را وارد کن.</p></div><a class="button secondary" href="index.php?page=products">بازگشت</a></div><form method="post" class="form"><input type="hidden" name="_csrf" value="<?=e(csrf())?>"><input type="hidden" name="action" value="save-product"><input type="hidden" name="id" value="<?=(int)($edit['id']??0)?>"><label>نام محصول<input name="name" maxlength="200" required value="<?=e($edit['name']??'')?>"></label><div class="fields"><label>شناسهٔ کالا (SKU)<input name="sku" maxlength="100" value="<?=e($edit['sku']??'')?>"></label><label>قیمت<input type="number" name="price" min="0" step="0.01" required value="<?=e($edit['price']??'0.00')?>"></label><label>موجودی<input type="number" name="stock" min="0" step="1" required value="<?=e($edit['stock']??0)?>"></label></div><label>توضیحات<textarea name="description" rows="7"><?=e($edit['description']??'')?></textarea></label><div class="form-actions"><button class="button primary">ذخیرهٔ محصول</button><a class="button secondary" href="index.php?page=products">لغو</a></div></form></section><?php endif;?><footer>Kadad CMS · نسخهٔ آزمایشی 0.0.1 — برای استفادهٔ واقعی به بررسی امنیتی و تکمیل امکانات نیاز دارد.</footer></section></main></div></body></html>
+?><!doctype html>
+<html lang="fa" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="description" content="وب‌سایت کاداد؛ محتوا، ابزارها و محصولات در یک جا.">
+<title>Kadad — خانه</title>
+<link rel="stylesheet" href="assets/admin.css">
+<style>
+:root{color-scheme:light}body{margin:0;background:#f5f7fb;color:#172b3a;font-family:Vazirmatn,Tahoma,sans-serif}.site-header{background:#fff;border-bottom:1px solid #e4eaf0}.site-header-inner,.site-main,.site-footer{width:min(1100px,calc(100% - 32px));margin:auto}.site-header-inner{min-height:76px;display:flex;align-items:center;gap:14px}.site-brand{font-size:22px;font-weight:900;color:#123747;text-decoration:none}.site-brand-mark{display:inline-grid;place-items:center;background:#123747;color:#fff;border-radius:14px;width:40px;height:40px;margin-left:8px}.site-main{padding:36px 0 60px}.welcome{background:linear-gradient(120deg,#123747,#226b72);color:#fff;padding:38px;border-radius:24px}.welcome h1{font-size:clamp(28px,4vw,42px);margin:8px 0}.welcome p{line-height:2;max-width:650px;color:#e0eff1}.section-title{margin:34px 0 16px}.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:16px}.site-card{background:#fff;border:1px solid #e4eaf0;border-radius:18px;padding:22px;overflow-wrap:anywhere}.site-card h3{margin:0 0 12px}.site-card p{white-space:pre-wrap;line-height:1.9;color:#526675}.price{font-weight:800;color:#087e72}.muted{color:#607482}.site-footer{padding:24px 0;color:#71818c;border-top:1px solid #e4eaf0}.empty{background:#fff;border:1px dashed #cbd6df;border-radius:16px;padding:22px;color:#607482}
+</style>
+</head>
+<body>
+<header class="site-header"><div class="site-header-inner"><a class="site-brand" href="./"><span class="site-brand-mark">K</span>Kadad</a></div></header>
+<main class="site-main">
+<section class="welcome"><small>به کاداد خوش آمدی</small><h1>یک خانه برای محتوا، ابزارها و محصولات</h1><p>این وب‌سایت با Kadad CMS ساخته شده است. مطالب منتشرشده و محصولات ثبت‌شده در اینجا نمایش داده می‌شوند.</p></section>
+<section><h2 class="section-title">مطالب تازه</h2>
+<?php if (!$posts): ?><div class="empty">هنوز مطلبی برای نمایش منتشر نشده است.</div><?php else: ?><div class="cards"><?php foreach ($posts as $post): ?><article class="site-card"><h3><?=e($post['title'])?></h3><p><?=e(mb_substr((string)$post['body'],0,500,'UTF-8'))?><?=mb_strlen((string)$post['body'],'UTF-8')>500?'…':''?></p></article><?php endforeach; ?></div><?php endif; ?>
+</section>
+<section><h2 class="section-title">محصولات</h2>
+<?php if (!$products): ?><div class="empty">هنوز محصولی برای نمایش ثبت نشده است.</div><?php else: ?><div class="cards"><?php foreach ($products as $product): ?><article class="site-card"><h3><?=e($product['name'])?></h3><p><?=e($product['description'])?></p><div class="price"><?=e(number_format((float)$product['price'],2))?></div></article><?php endforeach; ?></div><?php endif; ?>
+</section>
+</main><footer class="site-footer">Kadad CMS · نسخهٔ آزمایشی 0.0.1</footer>
+</body></html>
