@@ -1,0 +1,9 @@
+Options -Indexes
+
+<IfModule mod_rewrite.c>
+RewriteEngine On
+
+# The repository root may be the hosting document root. Keep source and
+# application data directories inaccessible over HTTP; only /public is web-facing.
+RewriteRule ^(app|database|docs|storage)(/|$) - [F,L,NC]
+</IfModule>
