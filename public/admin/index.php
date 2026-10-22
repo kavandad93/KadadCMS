@@ -2,7 +2,7 @@
 declare(strict_types=1);
 require __DIR__.'/../../app/bootstrap.php';
 $page=(string)($_GET['page']??'dashboard');
-if (!is_file(__DIR__.'/../app/config.php') && $page!=='login') go('install.php');
+if (!is_file(__DIR__.'/../../app/config.php')) go('../install.php');
 
 if ($page==='login') {
  $error='';
