@@ -20,7 +20,7 @@ if($page==='login') {
  $error='';
  if($_SERVER['REQUEST_METHOD']==='POST') {
   check_csrf(); $username=trim((string)($_POST['username']??'')); $password=(string)($_POST['password']??'');
-  try { $s=db()->prepare('SELECT id,username,password_hash FROM users WHERE username=? LIMIT 1'); $s->execute([$username]); $u=$s->fetch();
+  try { $s=db()->prepare('SELECT id,username,password_hash FROM users WHERE username=? AND phone IS NULL LIMIT 1'); $s->execute([$username]); $u=$s->fetch();
    if($u && password_verify($password,$u['password_hash'])) { session_regenerate_id(true); $_SESSION['user_id']=(int)$u['id']; $_SESSION['username']=$u['username']; go('index.php'); }
    $error='نام کاربری یا رمز عبور اشتباه است.';
   } catch(Throwable $e) { $error='ورود ممکن نیست؛ تنظیمات دیتابیس را بررسی کن.'; }
